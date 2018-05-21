@@ -27,7 +27,7 @@ use warnings;
 
 use base 'LWP::UserAgent';
 
-use Digest::SHA qw( hmac_sha512_hex );
+use Digest::SHA qw( hmac_sha256_hex );
 use JSON;
 use Time::HiRes;
 
@@ -35,14 +35,26 @@ use Binance::Constants qw( :all );
 
 use Binance::Exception::Parameter::Required;
 
+=head1 NAME
+
+Binance::API::Request -- LWP::UserAgent wrapper for L<Binance::API>
+
+=head1 DESCRIPTION
+
+This module provides a wrapper for LWP::UserAgent. Generates required parameters
+for Binance API requests.
+
+=cut
+
 sub new {
     my $class = shift;
     my %params = @_;
 
     my $self = {
-        apiKey    => $params{'apiKey'},
-        secretKey => $params{'secretKey'},
-        logger    => $params{'logger'},
+        apiKey     => $params{'apiKey'},
+        secretKey  => $params{'secretKey'},
+        recvWindow => $params{'recvWindow'},
+        logger     => $params{'logger'},
     };
 
     bless $self, $class;
@@ -119,7 +131,12 @@ sub _init {
         delete $body->{$param} unless defined $body->{$param};
     }
 
-    my $recvWindow = $self->{'recvWindow'};
+    my $recvWindow;
+    if ($params->{signed}) {
+        $recvWindow = defined $self->{'recvWindow'}
+            ? $self->{'recvWindow'} : 5000;
+    }
+
     my $timestamp = int Time::HiRes::time * 1000 if $params->{'signed'};
     my $uri = URI->new( BASE_URL . $path );
     my $full_path;
@@ -130,17 +147,17 @@ sub _init {
         if (!defined $query->{'recvWindow'} && defined $recvWindow) {
             $query->{'recvWindow'} = $recvWindow;
         }
-        elsif (!defined $b->{'recvWindow'} && defined $recvWindow) {
+        elsif (!defined $body->{'recvWindow'} && defined $recvWindow) {
             $body->{'recvWindow'} = $recvWindow;
         }
 
-        my $body_params = $uri->clone->query_form($body);
-        my $query_params = $uri->query_form($query);
+        $uri->clone->query_form($body);
+        $uri->query_form($query);
         $full_path = $uri->as_string;
-        $body_params->{signature} = hmac_sha512_hex(
-            { %$body_params, %$query_params }, $self->{secretKey}
+        $body->{signature} = hmac_sha256_hex(
+            { %$body, %$query }, $self->{secretKey}
         ) if $params->{signed};
-        $data{'Content'} = $body_params;
+        $data{'Content'} = $body;
     }
     # Query parameters only
     elsif (keys %$query || !keys %$query && !keys %$body) {
@@ -149,24 +166,32 @@ sub _init {
             $query->{'recvWindow'} = $recvWindow;
         }
 
-        my $query_params = $uri->query_form($query);
-        $query_params->{signature} = hmac_sha512_hex(
-            $uri->query, $self->{secretKey}
-        ) if $params->{signed};
+        $uri->query_form($query);
+        if ($params->{signed}) {
+            $query->{signature} = hmac_sha256_hex(
+                $uri->query, $self->{secretKey}
+            );
+            $uri->query_form($query);
+        }
+
         $full_path = $uri->as_string;
     }
     # Body parameters only
     elsif (keys %$body) {
         $body->{'timestamp'} = $timestamp if defined $timestamp;
-        if (!defined $b->{'recvWindow'} && defined $recvWindow) {
+        if (!defined $body->{'recvWindow'} && defined $recvWindow) {
             $body->{'recvWindow'} = $recvWindow;
         }
 
         $full_path = $uri->as_string;
-        my $body_params = $uri->query_form($body);
-        $body_params->{signature} = hmac_sha512_hex(
-            $uri->query, $self->{secretKey}
-        ) if $params->{signed};
+        $uri->query_form($body);
+        if ($params->{signed}) {
+            $body->{signature} = hmac_sha256_hex(
+                $uri->query, $self->{secretKey}
+            );
+            $uri->query_form($body);
+        }
+
         $data{'Content'} = $uri->query;
     }
 
