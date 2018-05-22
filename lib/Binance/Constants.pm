@@ -29,6 +29,7 @@ my %constants;
 BEGIN {
     %constants = (
         BASE_URL => $ENV{BINANCE_API_BASE_URL} || 'https://api.binance.com',
+        WSS_URL  => $ENV{BINANCE_WSS_BASE_URL} || 'wss://stream.binance.com:9443/ws/',
         DEBUG    => $ENV{BINANCE_API_DEBUG}    || 0,
     );
 }

@@ -49,7 +49,7 @@ sub wss_aggTrade {
   my $stream = {
     symbol => $params{'symbol'},
   };
-  return $self->ua->wss({ stream => $stream } );
+  return $self->ua->wss( 'aggTrade', { stream => $stream } );
 }
 
 sub wss_trade {
@@ -64,7 +64,7 @@ sub wss_trade {
   my $stream = {
     symbol => $params{'symbol'},
   };
-  return $self->ua->wss({ stream => $stream } );
+  return $self->ua->wss( '@trade', { stream => $stream } );
 }
 
 sub wss_kline {
@@ -82,7 +82,7 @@ sub wss_kline {
     symbol => $params{'symbol'},
     interval => $params{'interval'},
   };
-  return $self->ua->wss({ stream => $stream } );
+  return $self->ua->wss( '@kline_', { stream => $stream } );
 }
 
 sub wss_ticker {
@@ -97,11 +97,11 @@ sub wss_ticker {
   my $stream = {
     symbol => $params{'symbol'},
   };
-  return $self->ua->wss({ stream => $stream } );
+  return $self->ua->wss( '@ticker', { stream => $stream } );
 }
 
 sub  wss_tickerarr {
-  return $self->ua->wss();
+  return $self->ua->wss(!ticker@arr);
 }
 
 sub  wss_depth {
@@ -119,5 +119,5 @@ sub  wss_depth {
     symbol => $params{'symbol'},
     level => $params{'level'},
   };
-  return $self->ua->wss({ stream => $stream } );
+  return $self->ua->wss( '@depth', { stream => $stream } );
 }

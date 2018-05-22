@@ -26,6 +26,10 @@ use strict;
 use warnings;
 
 use base 'LWP::UserAgent';
+use AnyEvent;
+use AnyEvent::Socket;
+use AnyEvent::Handle;
+use Protocol::WebSocket::Client;
 
 use Digest::SHA qw( hmac_sha256_hex );
 use JSON;
@@ -200,6 +204,74 @@ sub _init {
     }
 
     return ($full_path, %data);
+}
+
+sub wss {
+  my ($self, $request, $params) = @_;
+  my $url;
+  if (scalar $params > 1) {
+    $url = WSS_URL . $params->{'symbol'} . $request.($params->{'level'} || $params->{'interval'});
+  }
+  elsif (scalar $params == 1) {
+    $url = WSS_URL . $params->{'symbol'}.$request;
+  }
+  else {
+    WSS_URL . $request;
+  }
+  my $cv = AnyEvent->condvar;
+  my $client = Protocol::WebSocket::Client->new(url => $url);
+  my ($host, $port) = ($client->url->host, $client->url->port);
+  tcp_connect $host, $port, sub {
+    my ($fh) = @_ or return $cv->send("Connect failed: $!");
+    $self->{logger}->debug("Connecting: $url");
+    my $ws_handle = AnyEvent::Handle->new(
+      fh     => $fh,
+      tls => "connect",
+      on_eof => sub {
+          $self->{logger}->debug("Disconnected");
+          $cv->send;
+      },
+      on_error => sub {
+          $self->{logger}->debug("Error: " . $_[1]);
+          $cv->send;
+      },
+      on_read => sub {
+          my ($handle) = @_;
+          my $buf = delete $handle->{rbuf};
+          $self->{logger}->debug("Stream: $buf");
+      }
+    );
+
+    $client->on( write => sub {
+      my $client = shift;
+      my ($buf) = @_;
+      $self->{logger}->debug("Writing");
+      $ws_handle->push_write($buf);
+    });
+
+    $client->on( read => sub {
+      my $self = shift;
+      my ($buf) = @_;
+    });
+    $client->connect;
+  };
+
+  my $stdin = AnyEvent::Handle->new(
+    fh      => \*STDIN,
+
+    on_read => sub {
+      my $handle = shift;
+      my $buf = delete $handle->{rbuf};
+      $client->write($buf);
+    },
+
+    on_eof => sub {
+      $client->disconnect;
+      my $ws_handle->destroy;
+      $cv->send;
+    });
+
+  $cv->wait;
 }
 
 1;
